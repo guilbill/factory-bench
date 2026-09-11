@@ -129,7 +129,7 @@ function LandingHero() {
         <span aria-hidden="true">🏭</span> Built end-to-end by Warp&apos;s Cloud Factory
       </p>
       <h1 className="mt-4 text-4xl font-bold tracking-tight text-slate-900 sm:text-5xl">
-        🍌 Nano Banana Iamge Editor
+        🍌 Nano Banana Image Editor
       </h1>
       <p className="mx-auto mt-4 max-w-2xl text-lg text-slate-600">
         Upload a photo, describe an edit in plain English, and Google&apos;s Gemini &ldquo;Nano
