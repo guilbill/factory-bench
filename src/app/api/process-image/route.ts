@@ -74,6 +74,22 @@ function unsupportedResponse(reason: string) {
   );
 }
 
+/**
+ * Product invariant 16's "any other unexpected failure ... results in a
+ * generic 'something went wrong, please try again' message" response, for
+ * failures that are internal parsing problems (no recognized tool_use block,
+ * or a schema-invalid apply_edit_operations payload) rather than Claude
+ * judging the instruction out of scope. Kept distinct from
+ * `unsupportedResponse`, which is reserved for invariant 7's specific
+ * "here's what's supported" case.
+ */
+function genericFailureResponse() {
+  return NextResponse.json(
+    { error: 'Something went wrong while processing your image. Please try again in a moment.', errorKind: 'unknown' },
+    { status: 500 }
+  );
+}
+
 export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData();
@@ -154,7 +170,7 @@ export async function POST(request: NextRequest) {
 
     const toolUseBlock = response.content.find((block) => block.type === 'tool_use');
     if (!toolUseBlock || (toolUseBlock.name !== 'apply_edit_operations' && toolUseBlock.name !== 'report_unsupported_instruction')) {
-      return unsupportedResponse("Claude didn't return a recognized response for this instruction. Try rephrasing it.");
+      return genericFailureResponse();
     }
 
     if (toolUseBlock.name === 'report_unsupported_instruction') {
@@ -167,7 +183,7 @@ export async function POST(request: NextRequest) {
     const operations = parseEditOperations(input.operations);
     const summary = typeof input.summary === 'string' && input.summary ? input.summary : null;
     if (!operations || !summary) {
-      return unsupportedResponse("Claude's response couldn't be turned into valid edit operations. Try rephrasing your instruction.");
+      return genericFailureResponse();
     }
 
     try {
