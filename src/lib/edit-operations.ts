@@ -23,6 +23,15 @@ export const BRIGHTNESS_CONTRAST_RANGE = { min: 0.1, max: 3 } as const;
 export const BLUR_SIGMA_RANGE = { min: 0.3, max: 100 } as const;
 export const SHARPEN_SIGMA_RANGE = { min: 0.3, max: 10 } as const;
 
+/**
+ * Upper bound (pixels, per side) a `resize` target is clamped to before it
+ * reaches `sharp`. Unlike crop/shape, resize has no canvas-relative bound to
+ * clamp against, so this is an absolute ceiling that keeps an extreme
+ * request (e.g. "resize to 20000x20000") from triggering a very large
+ * server-side allocation.
+ */
+export const MAX_RESIZE_DIMENSION = 10000;
+
 export interface CropOperation {
   type: 'crop';
   x: number;

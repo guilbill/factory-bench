@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import sharp from 'sharp';
 import { applyOperations, InvalidOperationError } from './apply-operations';
-import type { EditOperation } from './edit-operations';
+import { MAX_RESIZE_DIMENSION, type EditOperation } from './edit-operations';
 
 async function makeFixture(width = 100, height = 100, background = { r: 200, g: 100, b: 50 }): Promise<Buffer> {
   return sharp({
@@ -118,6 +118,25 @@ test('a resize to 0x0 throws InvalidOperationError', async () => {
   const fixture = await makeFixture(100, 100);
 
   await assert.rejects(() => applyOperations(fixture, [{ type: 'resize', width: 0, height: 0 }]), InvalidOperationError);
+});
+
+test('an extreme resize target is clamped to MAX_RESIZE_DIMENSION instead of reaching sharp unbounded', async () => {
+  const fixture = await makeFixture(10, 10);
+  const { buffer, regionAdjusted } = await applyOperations(fixture, [
+    { type: 'resize', width: 20000, height: 20000 },
+  ]);
+
+  const metadata = await sharp(buffer).metadata();
+  assert.equal(metadata.width, MAX_RESIZE_DIMENSION);
+  assert.equal(metadata.height, MAX_RESIZE_DIMENSION);
+  assert.equal(regionAdjusted, true);
+});
+
+test('a resize within MAX_RESIZE_DIMENSION is not reported as adjusted', async () => {
+  const fixture = await makeFixture(100, 100);
+  const { regionAdjusted } = await applyOperations(fixture, [{ type: 'resize', width: 50, height: 25 }]);
+
+  assert.equal(regionAdjusted, false);
 });
 
 test('text and shape operations composite without error', async () => {

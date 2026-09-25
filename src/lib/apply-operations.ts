@@ -13,6 +13,7 @@ import sharp from 'sharp';
 import {
   BLUR_SIGMA_RANGE,
   BRIGHTNESS_CONTRAST_RANGE,
+  MAX_RESIZE_DIMENSION,
   SHARPEN_SIGMA_RANGE,
   type BrightnessContrastOperation,
   type EditOperation,
@@ -38,9 +39,10 @@ export interface ApplyOperationsResult {
   buffer: Buffer;
   /**
    * True if any crop/shape region was clamped to fit inside the image
-   * bounds. `route.ts` uses this to append the Product invariant 9
-   * "adjusted to fit" note to Claude's summary — Claude writes that summary
-   * before this executor runs, so it can't know about clamping in advance.
+   * bounds, or a resize target was clamped to `MAX_RESIZE_DIMENSION`.
+   * `route.ts` uses this to append the Product invariant 9 "adjusted to
+   * fit" note to Claude's summary — Claude writes that summary before this
+   * executor runs, so it can't know about clamping in advance.
    */
   regionAdjusted: boolean;
 }
@@ -181,11 +183,14 @@ export async function applyOperations(input: Buffer, operations: EditOperation[]
       }
 
       case 'resize': {
-        const w = Math.round(op.width);
-        const h = Math.round(op.height);
-        if (w <= 0 || h <= 0) {
+        const rawW = Math.round(op.width);
+        const rawH = Math.round(op.height);
+        if (rawW <= 0 || rawH <= 0) {
           throw new InvalidOperationError(`Resize target must be a positive size (got ${op.width}x${op.height}).`);
         }
+        const w = clampNumber(rawW, 1, MAX_RESIZE_DIMENSION);
+        const h = clampNumber(rawH, 1, MAX_RESIZE_DIMENSION);
+        regionAdjusted ||= w !== rawW || h !== rawH;
         buffer = await sharp(buffer).resize(w, h).toBuffer();
         break;
       }
