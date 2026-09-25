@@ -1,12 +1,13 @@
 name: Review Pull Requests
 
-# Reviews an opened or updated pull request with an Oz cloud agent.
+# Reviews an opened or updated pull request with Claude Code on the runner.
 #
 # The agent runs with read-only GitHub permissions and writes structured
 # findings to review.json. A separate publish job validates that artifact
 # against the annotated diff and posts the GitHub review.
 #
-# Setup: the WARP_API_KEY repository secret must be set (the Oz API key).
+# Setup: the CLAUDE_CODE_OAUTH_TOKEN repository secret must be set
+# (generate it with `claude setup-token`).
 # Optional: enable "Allow GitHub Actions to create and approve pull requests"
 # in the repository/organization Actions settings if APPROVE review events
 # should succeed. Otherwise publish_review.py falls back to COMMENT for
@@ -105,14 +106,12 @@ jobs:
             spec_context.md
           if-no-files-found: error
 
-      - name: Review with Oz agent
-        uses: warpdotdev/oz-agent-action@v1.0.25
+      - name: Review with Claude Code
+        uses: anthropics/claude-code-action@v1
         id: review
-        env:
-          GH_TOKEN: ${{ github.token }}
         with:
-          skill: "${{ github.repository }}:review-pr"
-          name: "Review PR #${{ github.event.pull_request.number }}"
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ github.token }}
           prompt: |
             Review GitHub pull request #${{ github.event.pull_request.number }} in this repository using the review-pr skill.
 
@@ -136,70 +135,30 @@ jobs:
             `python3 .agents/skills/review-pr/scripts/validate_review_json.py --review-json review.json --diff pr_diff.txt`
 
             Do not post the review to GitHub. Leave the validated `review.json` file in the working directory. Your final response may restate the JSON, but the on-disk `review.json` file is required.
-          warp_api_key: ${{ secrets.WARP_API_KEY }}
-          profile: ${{ vars.WARP_AGENT_PROFILE || '' }}
+          claude_args: |
+            --allowedTools "Read,Write,Glob,Grep,Bash(python3 .agents/skills/review-pr/scripts/*),Bash(gh pr view:*),Bash(gh pr diff:*),Bash(git log:*),Bash(git show:*),Bash(git diff:*)"
 
-      - name: Materialize review.json
-        env:
-          REVIEW_RESULT: ${{ steps.review.outputs.agent_output }}
+      - name: Check review.json
         run: |
           set -euo pipefail
 
-          # Prefer the on-disk artifact written by the agent so large reviews are
-          # not limited by GitHub Actions job-output size.
-          if [ -f review.json ]; then
-            python3 - <<'PY'
+          if [ ! -f review.json ]; then
+            echo "::error::The agent did not write review.json." >&2
+            exit 1
+          fi
+
+          python3 - <<'PY'
           import json
           from pathlib import Path
 
           payload = json.loads(Path("review.json").read_text(encoding="utf-8"))
           if not isinstance(payload, dict) or "verdict" not in payload or "comments" not in payload:
-              raise SystemExit("review.json exists but is missing required verdict/comments fields")
+              raise SystemExit("review.json is missing required verdict/comments fields")
           print(
-              f"Using on-disk review.json "
+              f"Using review.json "
               f"(verdict={payload.get('verdict')}, comments={len(payload.get('comments') or [])})"
           )
           PY
-            exit 0
-          fi
-
-          if [ -z "${REVIEW_RESULT:-}" ]; then
-            echo "::error::Review job produced neither review.json nor agent output." >&2
-            exit 1
-          fi
-
-          printf '%s' "$REVIEW_RESULT" > raw_output.txt
-
-          # Fallback: extract the last review-result object from the agent output.
-          if ! python3 - raw_output.txt > review.json <<'PY'
-          import json, sys
-
-          text = open(sys.argv[1], encoding="utf-8").read()
-          decoder = json.JSONDecoder()
-          last_obj = last_review = None
-          for i, ch in enumerate(text):
-              if ch != "{":
-                  continue
-              try:
-                  obj, _ = decoder.raw_decode(text[i:])
-              except json.JSONDecodeError:
-                  continue
-              if isinstance(obj, dict):
-                  last_obj = obj
-                  if "verdict" in obj and "comments" in obj:
-                      last_review = obj
-          result = last_review if last_review is not None else last_obj
-          if result is None:
-              sys.exit(1)
-          json.dump(result, sys.stdout)
-          PY
-          then
-            echo "::error::Could not find a review JSON object in the agent output. Raw output:" >&2
-            cat raw_output.txt >&2
-            exit 1
-          fi
-
-          echo "Materialized review.json from agent output fallback"
 
       - name: Upload review result
         uses: actions/upload-artifact@v4
