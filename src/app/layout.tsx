@@ -13,9 +13,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Nano Banana Iamge Editor — Warp Cloud Factory Demo",
+  title: "Claude Pixel Editor — Warp Cloud Factory Demo",
   description:
-    "An AI-powered iterative image editor built entirely by Warp's Cloud Factory, an autonomous software agent factory. Upload a photo, describe an edit, and Google Gemini's \"Nano Banana\" model does the rest.",
+    "An AI-powered iterative image editor built entirely by Warp's Cloud Factory, an autonomous software agent factory. Upload a photo, describe an edit, and Claude turns it into a precise set of crop, filter, text, and shape operations.",
 };
 
 export default function RootLayout({

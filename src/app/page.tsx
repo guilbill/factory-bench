@@ -129,11 +129,12 @@ function LandingHero() {
         <span aria-hidden="true">🏭</span> Built end-to-end by Warp&apos;s Cloud Factory
       </p>
       <h1 className="mt-4 text-4xl font-bold tracking-tight text-slate-900 sm:text-5xl">
-        🍌 Nano Banana Iamge Editor
+        🎨 Claude Pixel Editor
       </h1>
       <p className="mx-auto mt-4 max-w-2xl text-lg text-slate-600">
-        Upload a photo, describe an edit in plain English, and Google&apos;s Gemini &ldquo;Nano
-        Banana&rdquo; image model rewrites it — then keep iterating on the result, edit after edit.
+        Upload a photo, describe an edit in plain English, and Claude turns it into a precise set
+        of crop, resize, rotate, filter, text, and shape operations applied to the real
+        pixels — then keep iterating on the result, edit after edit.
       </p>
       <p className="mx-auto mt-3 max-w-2xl text-sm text-slate-500">
         This app is a public demo for{" "}
@@ -300,7 +301,7 @@ export default function Home() {
       if (response.ok) {
         setStatusMessage({
           kind: "success",
-          text: `Nano Banana processed your image (${result.originalImageSize} bytes).`,
+          text: `Claude processed your image (${result.originalImageSize} bytes).`,
         });
         setResponseText(result.responseText);
         
@@ -342,7 +343,7 @@ export default function Home() {
         }
       } else {
         // result.error is already a friendly, human-readable message from the
-        // API (see src/lib/gemini-errors.ts) - safe to render verbatim.
+        // API (see src/lib/claude-errors.ts) - safe to render verbatim.
         setStatusMessage({ kind: "error", text: result.error ?? "Something went wrong. Please try again." });
         setResponseText(null);
       }
@@ -449,7 +450,7 @@ export default function Home() {
                       disabled={isSubmitting || !instructions.trim()}
                       className="px-6 py-2 bg-violet-600 text-white rounded-lg hover:bg-violet-700 focus:ring-2 focus:ring-violet-500 focus:ring-offset-2 transition-colors font-medium disabled:bg-slate-400 disabled:cursor-not-allowed"
                     >
-                      {isSubmitting ? 'Processing with Nano Banana...' : 'Process with AI'}
+                      {isSubmitting ? 'Processing with Claude...' : 'Process with AI'}
                     </button>
                   </div>
                 </form>
