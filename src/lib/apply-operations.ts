@@ -191,7 +191,7 @@ export async function applyOperations(input: Buffer, operations: EditOperation[]
         const w = clampNumber(rawW, 1, MAX_RESIZE_DIMENSION);
         const h = clampNumber(rawH, 1, MAX_RESIZE_DIMENSION);
         regionAdjusted ||= w !== rawW || h !== rawH;
-        buffer = await sharp(buffer).resize(w, h).toBuffer();
+        buffer = await sharp(buffer).resize(w, h, { fit: 'fill' }).toBuffer();
         break;
       }
 

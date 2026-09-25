@@ -31,6 +31,34 @@ test('resize scales to the requested pixel dimensions', async () => {
   assert.equal(metadata.height, 25);
 });
 
+test('resize scales the full image instead of cropping to fit the target aspect ratio', async () => {
+  const fixture = await sharp({
+    create: { width: 100, height: 50, channels: 3, background: { r: 0, g: 0, b: 255 } },
+  })
+    .composite([
+      {
+        input: await sharp({ create: { width: 10, height: 10, channels: 3, background: { r: 255, g: 0, b: 0 } } })
+          .png()
+          .toBuffer(),
+        top: 0,
+        left: 0,
+      },
+    ])
+    .png()
+    .toBuffer();
+
+  // Target aspect ratio (20x100, portrait) is very different from the source
+  // (100x50, landscape). A `fit: 'cover'` resize would scale-and-crop,
+  // discarding the top-left corner marker entirely; a plain scale must keep it.
+  const { buffer } = await applyOperations(fixture, [{ type: 'resize', width: 20, height: 100 }]);
+
+  const { data, info } = await sharp(buffer).raw().toBuffer({ resolveWithObject: true });
+  const [r, g, b] = [data[0], data[1], data[2]];
+  assert.equal(info.width, 20);
+  assert.equal(info.height, 100);
+  assert.ok(r > 200 && g < 50 && b < 50, `expected the top-left corner marker to survive the resize, got rgb(${r},${g},${b})`);
+});
+
 test('rotate by 90 degrees swaps width and height', async () => {
   const fixture = await makeFixture(100, 60);
   const { buffer } = await applyOperations(fixture, [{ type: 'rotate', degrees: 90 }]);
