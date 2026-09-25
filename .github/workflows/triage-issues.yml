@@ -55,7 +55,10 @@ jobs:
             applied.
 
             Return the result the skill specifies as your structured output.
-            Do not comment on, label, or otherwise mutate the issue.
+            Write `comment` with real line breaks: the structured output is
+            already JSON-encoded, so ignore the skill's rule about escaping
+            line breaks as `\n`. Do not comment on, label, or otherwise
+            mutate the issue.
           claude_args: |
             --allowedTools "Read,Glob,Grep,Bash(gh issue view:*),Bash(gh issue list:*),Bash(gh label list:*),Bash(git log:*)"
             --json-schema '{"type":"object","properties":{"state":{"type":"string","enum":["Ready to implement","Ready to spec","Needs info","Wait to implement"]},"label":{"type":"string"},"remove_labels":{"type":"array","items":{"type":"string"}},"comment":{"type":"string"}},"required":["state","label","comment"]}'

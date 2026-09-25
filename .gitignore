@@ -46,3 +46,9 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Riptide artifacts (cloud-synced)
+.humanlayer/tasks/
+
+# Riptide artifacts (cloud-synced)
+.humanlayer/tasks/
