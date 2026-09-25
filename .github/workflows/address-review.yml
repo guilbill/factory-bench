@@ -1,10 +1,13 @@
 name: Address Review Feedback
 
-# Fixes review feedback on a factory pull request with Claude Code.
+# Fixes review feedback and merge conflicts on factory pull requests with
+# Claude Code.
 #
 # Triggers:
 # - automatically when "Review Pull Requests" finishes and its latest review on
 #   the PR head is CHANGES_REQUESTED (capped at 2 automatic rounds per PR);
+# - automatically on every push to main, for each open factory PR that now
+#   conflicts with main (conflict resolution does not count as a fix round);
 # - manually when the repository owner comments `/fix ...` on a PR. The rest of
 #   the comment is passed to the agent as extra instructions. Not capped.
 #
@@ -19,16 +22,15 @@ on:
     types: [completed]
   issue_comment:
     types: [created]
-
-concurrency:
-  group: address-review-${{ github.event.workflow_run.head_branch || github.event.issue.number }}
-  cancel-in-progress: false
+  push:
+    branches: [main]
 
 jobs:
   resolve:
-    name: Decide whether to fix
+    name: Decide what to fix
     runs-on: ubuntu-latest
     if: >-
+      github.event_name == 'push' ||
       (github.event_name == 'workflow_run' &&
        github.event.workflow_run.conclusion == 'success') ||
       (github.event_name == 'issue_comment' &&
@@ -39,10 +41,7 @@ jobs:
       issues: write # create the fix-round labels
       pull-requests: write # label the PR and post the hand-off comment
     outputs:
-      run: ${{ steps.decide.outputs.run }}
-      pr: ${{ steps.decide.outputs.pr }}
-      branch: ${{ steps.decide.outputs.branch }}
-      round: ${{ steps.decide.outputs.round }}
+      targets: ${{ steps.decide.outputs.targets }}
     steps:
       - name: Decide
         id: decide
@@ -54,14 +53,42 @@ jobs:
           RUN_BRANCH: ${{ github.event.workflow_run.head_branch }}
           COMMENT_PR: ${{ github.event.issue.number }}
           MAX_AUTO_ROUNDS: "2"
+          FACTORY_BRANCH: '^(feature|spec)/issue-'
         run: |
           set -euo pipefail
 
-          skip() {
-            echo "Skipping: $1"
-            echo "run=false" >> "$GITHUB_OUTPUT"
+          emit() {
+            echo "targets=$1" >> "$GITHUB_OUTPUT"
+            echo "Targets: $1"
             exit 0
           }
+
+          skip() {
+            echo "Skipping: $1"
+            emit '[]'
+          }
+
+          # push to main: queue every open factory PR that now conflicts.
+          if [ "$EVENT" = "push" ]; then
+            targets='[]'
+            while read -r pr branch; do
+              [ -n "$pr" ] || continue
+              # GitHub computes mergeability asynchronously after a push.
+              mergeable=UNKNOWN
+              for _ in $(seq 1 10); do
+                mergeable="$(gh pr view "$pr" --repo "$REPO" --json mergeable --jq .mergeable)"
+                [ "$mergeable" != "UNKNOWN" ] && break
+                sleep 6
+              done
+              echo "PR #$pr ($branch): $mergeable"
+              if [ "$mergeable" = "CONFLICTING" ]; then
+                targets="$(jq -c --arg pr "$pr" --arg branch "$branch" \
+                  '. + [{pr: $pr, branch: $branch, round: "", mode: "conflict"}]' <<< "$targets")"
+              fi
+            done < <(gh pr list --repo "$REPO" --state open --json number,headRefName \
+              --jq ".[] | select(.headRefName | test(\"$FACTORY_BRANCH\")) | \"\(.number) \(.headRefName)\"")
+            emit "$targets"
+          fi
 
           if [ "$EVENT" = "workflow_run" ]; then
             PR="${RUN_PR:-}"
@@ -80,7 +107,7 @@ jobs:
           ROUNDS="$(jq '[.labels[].name | select(startswith("fix-round-"))] | length' pr.json)"
 
           [ "$STATE" = "OPEN" ] || skip "PR #$PR is $STATE"
-          [[ "$BRANCH" =~ ^(feature|spec)/issue- ]] || skip "$BRANCH is not a factory branch"
+          [[ "$BRANCH" =~ $FACTORY_BRANCH ]] || skip "$BRANCH is not a factory branch"
 
           if [ "$EVENT" = "workflow_run" ]; then
             LATEST="$(gh api "repos/$REPO/pulls/$PR/reviews" --paginate \
@@ -103,18 +130,21 @@ jobs:
             --description "Factory review-fix round $ROUND"
           gh pr edit "$PR" --repo "$REPO" --add-label "fix-round-$ROUND"
 
-          {
-            echo "run=true"
-            echo "pr=$PR"
-            echo "branch=$BRANCH"
-            echo "round=$ROUND"
-          } >> "$GITHUB_OUTPUT"
+          emit "$(jq -nc --arg pr "$PR" --arg branch "$BRANCH" --arg round "$ROUND" \
+            '[{pr: $pr, branch: $branch, round: $round, mode: "review"}]')"
 
   fix:
-    name: Fix review feedback
+    name: Fix PR #${{ matrix.target.pr }} (${{ matrix.target.mode }})
     needs: resolve
-    if: needs.resolve.outputs.run == 'true'
+    if: needs.resolve.outputs.targets != '' && needs.resolve.outputs.targets != '[]'
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target: ${{ fromJSON(needs.resolve.outputs.targets) }}
+    concurrency:
+      group: address-review-${{ matrix.target.branch }}
+      cancel-in-progress: false
     permissions:
       contents: write # push the follow-up commit
       pull-requests: write # reply to review comments
@@ -123,7 +153,8 @@ jobs:
       - name: Checkout pull request branch
         uses: actions/checkout@v4
         with:
-          ref: ${{ needs.resolve.outputs.branch }}
+          ref: ${{ matrix.target.branch }}
+          fetch-depth: 0 # merging main needs the shared history
           # Pushes made with a PAT trigger the review workflow again.
           token: ${{ secrets.FACTORY_TOKEN || github.token }}
 
@@ -148,14 +179,15 @@ jobs:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           github_token: ${{ secrets.FACTORY_TOKEN || github.token }}
           prompt: |
-            Address the review feedback on pull request #${{ needs.resolve.outputs.pr }}.
+            Address pull request #${{ matrix.target.pr }} in `${{ matrix.target.mode }}` mode.
 
             First read `.agents/skills/address-review/SKILL.md`, then follow it exactly.
 
             - Repository: ${{ github.repository }}
-            - Pull request: #${{ needs.resolve.outputs.pr }}
-            - Branch (already checked out): ${{ needs.resolve.outputs.branch }}
-            - Fix round: ${{ needs.resolve.outputs.round }}
+            - Pull request: #${{ matrix.target.pr }}
+            - Branch (already checked out): ${{ matrix.target.branch }}
+            - Mode: ${{ matrix.target.mode }}
+            - Fix round: ${{ matrix.target.round || 'n/a (conflict resolution)' }}
             - Human fix request: `${{ runner.temp }}/fix_request.md` (only present when a human commented `/fix`; never commit it)
             - Follow-along: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
 
