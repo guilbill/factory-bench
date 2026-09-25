@@ -54,7 +54,6 @@ jobs:
               run: make doc-deploy
 
     deploy-demo:
-        if: github.repository == 'marmelab/atomic-crm' # never deploy from forks
         name: 🚀 Deploy (demo)
         runs-on: ubuntu-latest
         timeout-minutes: 10
@@ -63,7 +62,7 @@ jobs:
             VITE_IS_DEMO: true
             VITE_INBOUND_EMAIL: ${{ vars.VITE_INBOUND_EMAIL }}
             VITE_ATTACHMENTS_BUCKET: ${{ vars.VITE_ATTACHMENTS_BUCKET || 'attachments' }}
-            PRODUCTION_REMOTE: https://git:${{ secrets.DEPLOY_TOKEN || secrets.GITHUB_TOKEN }}@github.com/${{ vars.DEMO_DEPLOY_REPOSITORY }}
+            PRODUCTION_REMOTE: https://git:${{ secrets.DEPLOY_TOKEN || secrets.GITHUB_TOKEN }}@github.com/${{ vars.DEMO_DEPLOY_REPOSITORY || github.repository }}
 
         steps:
             - name: 📥 Checkout repo
@@ -77,8 +76,8 @@ jobs:
 
             - name: ⚙️ Setup git
               run: |
-                  echo Deploying to pages to ${{ vars.DEMO_DEPLOY_REPOSITORY }}
-                  git remote set-url origin https://git:${{ secrets.DEPLOY_TOKEN || secrets.GITHUB_TOKEN }}@github.com/${{ vars.DEMO_DEPLOY_REPOSITORY }}
+                  echo Deploying to pages to ${{ vars.DEMO_DEPLOY_REPOSITORY || github.repository }}
+                  git remote set-url origin https://git:${{ secrets.DEPLOY_TOKEN || secrets.GITHUB_TOKEN }}@github.com/${{ vars.DEMO_DEPLOY_REPOSITORY || github.repository }}
                   git remote add production $PRODUCTION_REMOTE
                   git config --global user.email support+actions@github.com
                   git config --global user.name github-actions-bot
