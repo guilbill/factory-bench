@@ -72,7 +72,7 @@ jobs:
           INPUT_BRANCH: ${{ inputs.branch }}
           INPUT_MODE: ${{ inputs.mode }}
           MAX_AUTO_ROUNDS: "2"
-          FACTORY_BRANCH: '^(feature|spec)/issue-'
+          FACTORY_BRANCH: '^[a-z]+/issue-[0-9]+'
         run: |
           set -euo pipefail
 
