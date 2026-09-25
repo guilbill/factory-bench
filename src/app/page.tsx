@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 interface ImageHistoryItem {
   image: string;
@@ -182,26 +182,63 @@ export default function Home() {
   };
 
   // Function to revert to a previous image from history
-  const revertToHistoryImage = async (historyItem: ImageHistoryItem, index: number) => {
+  const revertToHistoryImage = useCallback(async (historyItem: ImageHistoryItem, index: number) => {
     try {
       // Truncate history to the selected point (pop everything after this index)
       setImageHistory(prev => prev.slice(0, index));
-      
+
       // Set the selected history image as current
       setSelectedImage(historyItem.image);
       const newFile = await dataURLtoFile(historyItem.image, `reverted_${Date.now()}.png`);
       setSelectedFile(newFile);
-      
+
       // Clear any messages and set instructions hint
       setStatusMessage({ kind: "info", text: `Reverted to image #${index + 1} - "${historyItem.prompt}"` });
       setInstructions("");
       setResponseText(null);
-      
+
     } catch (error) {
       console.error('Error reverting to history image:', error);
       setStatusMessage({ kind: "error", text: `Error reverting to image #${index + 1}` });
     }
-  };
+  }, []);
+
+  // Keep the latest history in a ref so the keydown listener below doesn't
+  // need to be torn down and re-attached every time an edit is made.
+  const imageHistoryRef = useRef(imageHistory);
+  useEffect(() => {
+    imageHistoryRef.current = imageHistory;
+  }, [imageHistory]);
+
+  // Cmd+Z (macOS) / Ctrl+Z (elsewhere) steps back one entry in the history,
+  // mirroring a click on the most recent history thumbnail. Skipped while an
+  // editable element is focused so it doesn't steal native text-undo.
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== "z") {
+        return;
+      }
+
+      const target = event.target;
+      const isEditableTarget =
+        target instanceof HTMLElement &&
+        (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable);
+      if (isEditableTarget) {
+        return;
+      }
+
+      const history = imageHistoryRef.current;
+      if (history.length === 0) {
+        return;
+      }
+
+      event.preventDefault();
+      revertToHistoryImage(history[history.length - 1], history.length - 1);
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [revertToHistoryImage]);
 
   const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
