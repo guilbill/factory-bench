@@ -28,6 +28,9 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          # Pushes and PRs made with a PAT trigger the review workflow.
+          token: ${{ secrets.FACTORY_TOKEN || github.token }}
       - name: Install common spec skills
         run: npx skills add warpdotdev/common-skills --skill write-product-spec --skill write-tech-spec --agent claude-code --yes
 
@@ -36,7 +39,7 @@ jobs:
         id: spec
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          github_token: ${{ github.token }}
+          github_token: ${{ secrets.FACTORY_TOKEN || github.token }}
           prompt: |
             Create checked-in product and technical specs for the GitHub issue that was just labeled ready to spec.
 

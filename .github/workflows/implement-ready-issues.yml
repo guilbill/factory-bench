@@ -27,6 +27,9 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          # Pushes and PRs made with a PAT trigger the review workflow.
+          token: ${{ secrets.FACTORY_TOKEN || github.token }}
       - name: Install spec validation skill
         run: npx skills add warpdotdev/common-skills --skill validate-changes-match-specs --agent claude-code --yes
 
@@ -44,7 +47,7 @@ jobs:
         id: implement
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          github_token: ${{ github.token }}
+          github_token: ${{ secrets.FACTORY_TOKEN || github.token }}
           prompt: |
             Use the Implementation skill in this repository to implement the GitHub issue that was just labeled ready to implement.
 

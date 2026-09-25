@@ -7,7 +7,8 @@ name: Triage New Issues
 # and comment to the triggering issue only.
 #
 # Setup: the CLAUDE_CODE_OAUTH_TOKEN repository secret must be set
-# (generate it with `claude setup-token`).
+# (generate it with `claude setup-token`). FACTORY_TOKEN (fine-grained PAT)
+# lets the applied label trigger the implement/spec workflows.
 
 on:
   issues:
@@ -72,7 +73,8 @@ jobs:
     steps:
       - name: Apply label and comment
         env:
-          GH_TOKEN: ${{ github.token }}
+          # A PAT, not GITHUB_TOKEN, so the label fires the implement/spec workflows.
+          GH_TOKEN: ${{ secrets.FACTORY_TOKEN || github.token }}
           REPO: ${{ github.repository }}
           ISSUE_NUMBER: ${{ github.event.issue.number }}
           TRIAGE_RESULT: ${{ needs.triage.outputs.triage_result }}
