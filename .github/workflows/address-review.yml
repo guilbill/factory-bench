@@ -7,7 +7,9 @@ name: Address Review Feedback
 # - automatically when "Review Pull Requests" finishes and its latest review on
 #   the PR head is CHANGES_REQUESTED (capped at 2 automatic rounds per PR);
 # - automatically on every push to main, for each open factory PR that now
-#   conflicts with main (conflict resolution does not count as a fix round);
+#   conflicts with main (conflict resolution does not count as a fix round).
+#   claude-code-action rejects `push` events, so the push only detects
+#   conflicts and re-dispatches this workflow once per conflicting PR;
 # - manually when the repository owner comments `/fix ...` on a PR. The rest of
 #   the comment is passed to the agent as extra instructions. Not capped.
 #
@@ -24,6 +26,18 @@ on:
     types: [created]
   push:
     branches: [main]
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: "Pull request number"
+        required: true
+      branch:
+        description: "Pull request head branch"
+        required: true
+      mode:
+        description: "review or conflict"
+        required: true
+        default: conflict
 
 jobs:
   resolve:
@@ -31,6 +45,7 @@ jobs:
     runs-on: ubuntu-latest
     if: >-
       github.event_name == 'push' ||
+      github.event_name == 'workflow_dispatch' ||
       (github.event_name == 'workflow_run' &&
        github.event.workflow_run.conclusion == 'success') ||
       (github.event_name == 'issue_comment' &&
@@ -38,6 +53,7 @@ jobs:
        startsWith(github.event.comment.body, '/fix') &&
        github.event.comment.author_association == 'OWNER')
     permissions:
+      actions: write # re-dispatch this workflow for conflicting PRs
       issues: write # create the fix-round labels
       pull-requests: write # label the PR and post the hand-off comment
     outputs:
@@ -52,6 +68,9 @@ jobs:
           RUN_PR: ${{ github.event.workflow_run.pull_requests[0].number }}
           RUN_BRANCH: ${{ github.event.workflow_run.head_branch }}
           COMMENT_PR: ${{ github.event.issue.number }}
+          INPUT_PR: ${{ inputs.pr }}
+          INPUT_BRANCH: ${{ inputs.branch }}
+          INPUT_MODE: ${{ inputs.mode }}
           MAX_AUTO_ROUNDS: "2"
           FACTORY_BRANCH: '^(feature|spec)/issue-'
         run: |
@@ -68,9 +87,16 @@ jobs:
             emit '[]'
           }
 
-          # push to main: queue every open factory PR that now conflicts.
+          # Dispatched run: fix exactly the PR it was dispatched for.
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            [[ "$INPUT_BRANCH" =~ $FACTORY_BRANCH ]] || skip "$INPUT_BRANCH is not a factory branch"
+            [[ "$INPUT_MODE" =~ ^(review|conflict)$ ]] || skip "unknown mode $INPUT_MODE"
+            emit "$(jq -nc --arg pr "$INPUT_PR" --arg branch "$INPUT_BRANCH" --arg mode "$INPUT_MODE" \
+              '[{pr: $pr, branch: $branch, round: "", mode: $mode}]')"
+          fi
+
+          # push to main: dispatch one run per open factory PR that now conflicts.
           if [ "$EVENT" = "push" ]; then
-            targets='[]'
             while read -r pr branch; do
               [ -n "$pr" ] || continue
               # GitHub computes mergeability asynchronously after a push.
@@ -82,12 +108,12 @@ jobs:
               done
               echo "PR #$pr ($branch): $mergeable"
               if [ "$mergeable" = "CONFLICTING" ]; then
-                targets="$(jq -c --arg pr "$pr" --arg branch "$branch" \
-                  '. + [{pr: $pr, branch: $branch, round: "", mode: "conflict"}]' <<< "$targets")"
+                gh workflow run address-review.yml --repo "$REPO" --ref main \
+                  -f pr="$pr" -f branch="$branch" -f mode=conflict
               fi
             done < <(gh pr list --repo "$REPO" --state open --json number,headRefName \
               --jq ".[] | select(.headRefName | test(\"$FACTORY_BRANCH\")) | \"\(.number) \(.headRefName)\"")
-            emit "$targets"
+            emit '[]'
           fi
 
           if [ "$EVENT" = "workflow_run" ]; then
