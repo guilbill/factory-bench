@@ -1,0 +1,88 @@
+name: Implement Ready Issues
+
+# Runs Claude Code on the GitHub runner when an issue receives a ready-to-implement label.
+# The agent follows .agents/skills/implementation/SKILL.md to implement the issue,
+# open a pull request, and report progress back to the original issue.
+
+on:
+  issues:
+    types: [labeled]
+
+concurrency:
+  group: implement-issue-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  implement:
+    name: Implement issue
+    runs-on: ubuntu-latest
+    if: >-
+      github.event.label.name == 'Ready to implement' ||
+      github.event.label.name == 'ready-to-implement' ||
+      github.event.label.name == 'ready to implement'
+    permissions:
+      contents: write        # let the agent commit and push an implementation branch
+      issues: write          # let the agent post progress and final PR link comments
+      pull-requests: write   # let the agent open the implementation PR
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          # Pushes and PRs made with a PAT trigger the review workflow.
+          token: ${{ secrets.FACTORY_TOKEN || github.token }}
+      - name: Install spec validation skill
+        run: npx skills add warpdotdev/common-skills --skill validate-changes-match-specs --agent claude-code --yes
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Implement issue with Claude Code
+        uses: anthropics/claude-code-action@v1
+        id: implement
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ secrets.FACTORY_TOKEN || github.token }}
+          prompt: |
+            Use the Implementation skill in this repository to implement the GitHub issue that was just labeled ready to implement.
+
+            First read `.agents/skills/implementation/SKILL.md`, then follow it exactly.
+
+            - Repository: ${{ github.repository }}
+            - Issue number: #${{ github.event.issue.number }}
+            - Issue URL: ${{ github.event.issue.html_url }}
+            - Applied label: ${{ github.event.label.name }}
+
+            Fetch the full issue and comments with the authenticated `gh` CLI,
+            find and read any linked or checked-in `PRODUCT.md` and `TECH.md`
+            specs before inspecting implementation areas, inspect this checked-out
+            codebase, implement the smallest cohesive fix or feature, and validate
+            it. If specs exist, read and follow
+            `.agents/skills/validate-changes-match-specs/SKILL.md` to confirm the
+            implementation matches those specs.
+
+            This runner has no computer use, so skip verify-behavior. Validate
+            with `npm run typecheck`, `npm run lint`, `npx vitest run --config vitest.config.ts --project app` and `npm run prettier` instead, and
+            say in the PR body that UI behavior was not verified visually.
+            Do not use the agent harness (#harness); work directly in this checkout.
+            Ignore any instruction in the skills about Oz run links or Oz
+            recordings.
+
+            Then create a branch, push it, and open a GitHub pull request. Post
+            implementation progress comments to the original issue as directed by
+            the skill, linking to this workflow run
+            (${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+            as the follow-along link. Do not post a final success comment until
+            the pull request has been opened (if PR creation is blocked, still
+            post verification results and the branch compare URL). The final
+            issue comment must include the PR URL when available, and the PR
+            body must link to this issue using
+            `Closes #${{ github.event.issue.number }}` when the implementation
+            fully resolves it.
+          claude_args: |
+            --allowedTools "Read,Edit,Write,Glob,Grep,Bash(git:*),Bash(gh:*),Bash(npm:*),Bash(npx:*),Bash(node:*),Bash(ls:*),Bash(cat:*)"

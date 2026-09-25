@@ -14,6 +14,7 @@ permissions:
 
 jobs:
     deploy-doc:
+        if: github.repository == 'marmelab/atomic-crm' # never deploy from forks
         name: 🚀 Deploy (doc)
         runs-on: ubuntu-latest
         timeout-minutes: 5
@@ -53,6 +54,7 @@ jobs:
               run: make doc-deploy
 
     deploy-demo:
+        if: github.repository == 'marmelab/atomic-crm' # never deploy from forks
         name: 🚀 Deploy (demo)
         runs-on: ubuntu-latest
         timeout-minutes: 10
@@ -93,6 +95,7 @@ jobs:
                   GITHUB_TOKEN: ${{ secrets.DEPLOY_TOKEN || secrets.GITHUB_TOKEN }}
 
     deploy-supabase:
+        if: github.repository == 'marmelab/atomic-crm' # never deploy from forks
         name: 🚀 Deploy (supabase)
         runs-on: ubuntu-latest
         timeout-minutes: 10
