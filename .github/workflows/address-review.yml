@@ -204,6 +204,9 @@ jobs:
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           github_token: ${{ secrets.FACTORY_TOKEN || github.token }}
+          # Conflict runs are dispatched by this workflow itself, so the actor
+          # is the github-actions bot. Only allow that one bot.
+          allowed_bots: "github-actions,github-actions[bot]"
           prompt: |
             Address pull request #${{ matrix.target.pr }} in `${{ matrix.target.mode }}` mode.
 
