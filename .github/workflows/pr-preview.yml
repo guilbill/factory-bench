@@ -1,0 +1,89 @@
+name: 🔍 PR Preview
+
+# Publishes the demo build of each pull request under pr-<n>/ on gh-pages,
+# comments the preview URL on the PR, and removes the preview when the PR
+# closes. The main demo (deploy.yml) keeps the site root.
+#
+# Only same-repo PRs get a preview: fork PRs have a read-only token.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
+
+jobs:
+  preview:
+    name: Preview
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    permissions:
+      contents: write # push to gh-pages
+      pull-requests: write # comment the preview URL
+    env:
+      TARGET: pr-${{ github.event.pull_request.number }}
+      PR: ${{ github.event.pull_request.number }}
+      CLOSED: ${{ github.event.action == 'closed' }}
+      GITHUB_TOKEN: ${{ github.token }}
+      GH_TOKEN: ${{ github.token }}
+      DEPLOY_REPOSITORY: ${{ vars.DEMO_DEPLOY_REPOSITORY || github.repository }}
+      DEPLOY_BRANCH: ${{ vars.DEPLOY_BRANCH || 'gh-pages' }}
+    steps:
+      - name: 📥 Checkout repo
+        uses: actions/checkout@v4
+
+      - name: ⚙️ Setup node
+        if: env.CLOSED != 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: 📥 Download deps
+        if: env.CLOSED != 'true'
+        run: npm ci
+
+      - name: 🔨 Build demo
+        if: env.CLOSED != 'true'
+        env:
+          VITE_IS_DEMO: true
+          VITE_ATTACHMENTS_BUCKET: ${{ vars.VITE_ATTACHMENTS_BUCKET || 'attachments' }}
+        run: npm run build:demo
+
+      - name: 📡 Publish preview
+        if: env.CLOSED != 'true'
+        run: .github/scripts/publish-gh-pages.sh "$TARGET" dist
+
+      - name: 🧹 Remove preview
+        if: env.CLOSED == 'true'
+        run: .github/scripts/publish-gh-pages.sh "$TARGET"
+
+      - name: 💬 Comment preview URL
+        env:
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          base="$(gh api "repos/$DEPLOY_REPOSITORY/pages" --jq .html_url 2>/dev/null || true)"
+          if [ -z "$base" ]; then
+            owner="${DEPLOY_REPOSITORY%%/*}"
+            base="https://${owner}.github.io/${DEPLOY_REPOSITORY#*/}/"
+          fi
+          url="${base%/}/$TARGET/"
+
+          marker="<!-- pr-preview -->"
+          if [ "$CLOSED" = "true" ]; then
+            body="$marker
+          Preview removed: this PR is closed."
+          else
+            body="$marker
+          🔍 Demo preview: $url
+
+          Built from ${HEAD_SHA:0:7}. It can take a minute or two to show up after each push."
+          fi
+
+          existing="$(gh api "repos/$GITHUB_REPOSITORY/issues/$PR/comments" --paginate \
+            --jq "[.[] | select(.body | startswith(\"$marker\"))] | first | .id // empty")"
+          if [ -n "$existing" ]; then
+            gh api -X PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$existing" -f body="$body" > /dev/null
+          else
+            gh pr comment "$PR" --repo "$GITHUB_REPOSITORY" --body "$body"
+          fi

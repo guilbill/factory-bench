@@ -89,9 +89,12 @@ jobs:
               run: npm run build:demo
 
             - name: 📡 Deploy GitHub pages
-              run: npx gh-pages --remote production -d dist -b ${{ vars.DEPLOY_BRANCH || 'gh-pages' }}
+              # Keeps the pr-*/ previews published by pr-preview.yml.
+              run: .github/scripts/publish-gh-pages.sh root dist
               env:
                   GITHUB_TOKEN: ${{ secrets.DEPLOY_TOKEN || secrets.GITHUB_TOKEN }}
+                  DEPLOY_REPOSITORY: ${{ vars.DEMO_DEPLOY_REPOSITORY || github.repository }}
+                  DEPLOY_BRANCH: ${{ vars.DEPLOY_BRANCH || 'gh-pages' }}
 
     deploy-supabase:
         if: github.repository == 'marmelab/atomic-crm' # never deploy from forks
