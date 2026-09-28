@@ -3,7 +3,7 @@ import { useRecordContext, useTranslate, WithRecord } from "ra-core";
 import { ArrayField } from "@/components/admin/array-field";
 import { SingleFieldList } from "@/components/admin/single-field-list";
 import { EmailField } from "@/components/admin/email-field";
-import { PhoneField } from "@/components/admin/phone-field";
+import { PhoneField } from "@/components/admin";
 import { Mail, Phone, Linkedin, Check } from "lucide-react";
 import type { ReactNode } from "react";
 import {
